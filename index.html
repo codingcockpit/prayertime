@@ -263,6 +263,49 @@
       50%       { opacity: 0.9; }
     }
 
+    /* ── Mobile responsive ─────────────────────────────────────────────────── */
+
+    @media (max-width: 520px) {
+      body { padding: 12px 8px; }
+
+      .board-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 16px;
+      }
+
+      .countdown-block { text-align: left; }
+
+      .col-headers,
+      .prayer-row {
+        grid-template-columns: 1fr 1fr;
+        padding: 0 16px;
+      }
+
+      .col-headers { padding: 8px 16px; }
+
+      .col-header:last-child,
+      .prayer-status { display: none; }
+
+      .prayer-row { height: 52px; }
+
+      .prayer-name { font-size: 0.9rem; }
+
+      .prayer-time { font-size: 1.15rem; }
+
+      .countdown-value { font-size: 1.3rem; }
+
+      .board-footer { padding: 10px 16px; }
+
+      .footer-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 85%;
+      }
+    }
+
     /* Scanline CRT overlay */
     .board::after {
       content: '';
