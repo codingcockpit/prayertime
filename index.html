@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prayer Time</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/adhan@4.4.3/lib/bundles/adhan.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Share Tech Mono', 'Courier New', monospace;
+      padding: 24px 16px;
+    }
+
+    .board-wrap {
+      width: 100%;
+      max-width: 720px;
+    }
+
+    .board {
+      background: #111;
+      border: 2px solid #3a2800;
+      border-radius: 6px;
+      box-shadow:
+        inset 0 0 40px rgba(0,0,0,0.8),
+        0 0 60px rgba(245,166,35,0.08),
+        0 4px 32px rgba(0,0,0,0.7);
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Header */
+    .board-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 28px;
+      background: #0d0d0d;
+      border-bottom: 1px solid #3a2800;
+    }
+
+    .board-title {
+      color: #f5a623;
+      font-size: 1.05rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .board-city-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: 1px solid #3a2800;
+      color: #f5a623;
+      font-family: inherit;
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      cursor: pointer;
+      margin-top: 6px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .board-city-btn:hover,
+    .board-city-btn.active {
+      border-color: #f5a623;
+      color: #fff;
+      background: rgba(245,166,35,0.06);
+    }
+
+    .board-city-btn .arrow {
+      font-size: 0.6rem;
+      transition: transform 0.2s;
+    }
+
+    .board-city-btn.active .arrow { transform: rotate(180deg); }
+
+    .board-date {
+      color: #7a5010;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      margin-top: 4px;
+    }
+
+    .countdown-block {
+      text-align: right;
+    }
+
+    .countdown-label {
+      color: #7a5010;
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      margin-bottom: 4px;
+    }
+
+    .countdown-value {
+      color: #f5a623;
+      font-size: 1.6rem;
+      letter-spacing: 0.08em;
+      font-weight: normal;
+    }
+
+    .countdown-value .digit {
+      display: inline-block;
+    }
+
+    @keyframes flip {
+      0%   { transform: translateY(-4px); opacity: 0.4; }
+      60%  { transform: translateY(2px);  opacity: 1; }
+      100% { transform: translateY(0);    opacity: 1; }
+    }
+
+    .digit.changed { animation: flip 0.12s ease-in-out; }
+
+    /* ── Map Panel ─────────────────────────────────────────────────────────── */
+
+    .map-panel {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease;
+      background: #0a0a0a;
+      border-bottom: 1px solid transparent;
+    }
+
+    .map-panel.open {
+      max-height: 320px;
+      border-bottom-color: #3a2800;
+    }
+
+    .map-inner {
+      padding: 10px 16px 12px;
+    }
+
+    .map-loading {
+      color: #4a3000;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-align: center;
+      padding: 60px 0;
+    }
+
+    #worldMap {
+      display: block;
+      width: 100%;
+      height: 260px;
+    }
+
+    .city-point { cursor: pointer; }
+    .city-point:hover circle { r: 6; }
+
+    /* ── Column headers ────────────────────────────────────────────────────── */
+
+    .col-headers {
+      display: grid;
+      grid-template-columns: 180px 1fr 140px;
+      padding: 8px 28px;
+      background: #0d0d0d;
+      border-bottom: 1px solid #2a1a00;
+    }
+
+    .col-header {
+      color: #4a3000;
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .col-header:last-child { text-align: right; }
+
+    /* ── Prayer rows ───────────────────────────────────────────────────────── */
+
+    .prayer-row {
+      display: grid;
+      grid-template-columns: 180px 1fr 140px;
+      align-items: center;
+      padding: 0 28px;
+      height: 62px;
+      border-bottom: 1px solid #1c1200;
+      transition: background 0.3s;
+    }
+
+    .prayer-row:last-child { border-bottom: none; }
+
+    .prayer-row.done .prayer-name,
+    .prayer-row.done .prayer-time { color: #4a3008; }
+
+    .prayer-row.done .prayer-status { color: #3a2500; }
+
+    .prayer-row.next { background: #3d2800; }
+
+    .prayer-row.next .prayer-name,
+    .prayer-row.next .prayer-time {
+      color: #ffffff;
+      text-shadow: 0 0 12px rgba(245,166,35,0.6);
+    }
+
+    .prayer-row.next .prayer-status { color: #f5a623; }
+
+    .prayer-row.future .prayer-name,
+    .prayer-row.future .prayer-time { color: #f5a623; }
+
+    .prayer-row.future .prayer-status { color: transparent; }
+
+    .prayer-name {
+      font-size: 1.05rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .prayer-time {
+      font-size: 1.4rem;
+      letter-spacing: 0.08em;
+    }
+
+    .prayer-status {
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      text-align: right;
+      text-transform: uppercase;
+    }
+
+    /* ── Footer ────────────────────────────────────────────────────────────── */
+
+    .board-footer {
+      padding: 10px 28px;
+      background: #0d0d0d;
+      border-top: 1px solid #2a1a00;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-label {
+      color: #3a2500;
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+    }
+
+    .footer-dot {
+      width: 6px;
+      height: 6px;
+      background: #f5a623;
+      border-radius: 50%;
+      opacity: 0.6;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50%       { opacity: 0.9; }
+    }
+
+    /* Scanline CRT overlay */
+    .board::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.05) 2px,
+        rgba(0,0,0,0.05) 4px
+      );
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="board-wrap">
+    <div class="board" id="board"><!-- rendered by JS --></div>
+  </div>
+
+  <script>
+    // ─── City data ────────────────────────────────────────────────────────────
+
+    const CITIES = [
+      { name: 'Zurich',     lat: 47.3769,  lon:   8.5417,  tz: 'Europe/Zurich',    lx:  6,   ly: 13 },
+      { name: 'London',     lat: 51.5074,  lon:  -0.1278,  tz: 'Europe/London',    lx:  6,   ly: -7 },
+      { name: 'Doha',       lat: 25.2854,  lon:  51.5310,  tz: 'Asia/Qatar',       lx:  6,   ly:  4 },
+      { name: 'Lahore',     lat: 31.5204,  lon:  74.3587,  tz: 'Asia/Karachi',     lx:  6,   ly:  4 },
+      { name: 'Beijing',    lat: 39.9042,  lon: 116.4074,  tz: 'Asia/Shanghai',    lx:  6,   ly: -7 },
+      { name: 'Tokyo',      lat: 35.6762,  lon: 139.6503,  tz: 'Asia/Tokyo',       lx:  6,   ly:  4 },
+      { name: 'New York',   lat: 40.7128,  lon: -74.0060,  tz: 'America/New_York', lx:  6,   ly: -7 },
+      { name: 'Dallas',     lat: 32.7767,  lon: -96.7970,  tz: 'America/Chicago',  lx:  6,   ly:  4 },
+    ];
+
+    let selectedCity = CITIES[0]; // default Zurich
+
+    // ─── Prayer calculation ───────────────────────────────────────────────────
+
+    function getDateInCity(tz) {
+      const s = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function getPrayersForDate(date, city) {
+      const coords = new adhan.Coordinates(city.lat, city.lon);
+      const params = adhan.CalculationMethod.MuslimWorldLeague();
+      const times = new adhan.PrayerTimes(coords, date, params);
+      return [
+        { name: 'Fajr',    time: times.fajr },
+        { name: 'Sunrise', time: times.sunrise },
+        { name: 'Dhuhr',   time: times.dhuhr },
+        { name: 'Asr',     time: times.asr },
+        { name: 'Maghrib', time: times.maghrib },
+        { name: 'Isha',    time: times.isha },
+      ];
+    }
+
+    function getNextPrayer(prayers) {
+      const now = Date.now();
+      return prayers.find(p => p.time.getTime() > now) || null;
+    }
+
+    // ─── Formatting ───────────────────────────────────────────────────────────
+
+    function fmt2(n) { return String(n).padStart(2, '0'); }
+
+    function fmtTime(date, tz) {
+      return date.toLocaleTimeString('en-GB', {
+        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz
+      });
+    }
+
+    function fmtCountdown(ms) {
+      if (ms <= 0) return '00:00:00';
+      const s = Math.floor(ms / 1000);
+      return fmt2(Math.floor(s / 3600)) + ':' + fmt2(Math.floor((s % 3600) / 60)) + ':' + fmt2(s % 60);
+    }
+
+    function fmtDate(tz) {
+      return new Date().toLocaleDateString('en-GB', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: tz
+      }).toUpperCase();
+    }
+
+    function coordLabel(city) {
+      const lat = city.lat >= 0 ? city.lat.toFixed(4) + '° N' : Math.abs(city.lat).toFixed(4) + '° S';
+      const lon = city.lon >= 0 ? city.lon.toFixed(4) + '° E' : Math.abs(city.lon).toFixed(4) + '° W';
+      return city.name.toUpperCase() + ' \u00a0 ' + lat + ', ' + lon + ' \u00a0 Muslim World League';
+    }
+
+    // ─── State ────────────────────────────────────────────────────────────────
+
+    let currentDayStr = '';
+    let prayers = [];
+    let tomorrowFajr = null;
+    let prevCountdown = '';
+    let prevNextIdx = -1;
+
+    function loadPrayers() {
+      const city = selectedCity;
+      const today = getDateInCity(city.tz);
+      prayers = getPrayersForDate(today, city);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrowFajr = getPrayersForDate(tomorrow, city)[0];
+      currentDayStr = today.toDateString();
+    }
+
+    // ─── Board render ─────────────────────────────────────────────────────────
+
+    function buildBoard() {
+      const city = selectedCity;
+      const nextPrayer = getNextPrayer(prayers);
+      const nextIdx = nextPrayer ? prayers.indexOf(nextPrayer) : -1;
+
+      let countdownMs, nextName;
+      if (nextPrayer) {
+        countdownMs = nextPrayer.time.getTime() - Date.now();
+        nextName = nextPrayer.name;
+      } else {
+        countdownMs = tomorrowFajr.time.getTime() - Date.now();
+        nextName = 'Fajr';
+      }
+
+      const countdownStr = fmtCountdown(countdownMs);
+      const countdownHtml = countdownStr.split('').map(ch => `<span class="digit">${ch}</span>`).join('');
+
+      const rows = prayers.map((p, i) => {
+        let rowClass = 'future', status = '';
+        if (i < nextIdx || nextIdx === -1) { rowClass = 'done'; status = '&#10003; DONE'; }
+        if (i === nextIdx)                 { rowClass = 'next'; status = '&#9654; NEXT'; }
+        if (nextIdx === -1 && i === prayers.length - 1) { rowClass = 'done'; status = '&#10003; DONE'; }
+        return `
+          <div class="prayer-row ${rowClass}">
+            <div class="prayer-name">${p.name}</div>
+            <div class="prayer-time">${fmtTime(p.time, city.tz)}</div>
+            <div class="prayer-status">${status}</div>
+          </div>`;
+      }).join('');
+
+      const mapOpen = document.querySelector('.map-panel.open') !== null;
+
+      document.getElementById('board').innerHTML = `
+        <div class="board-header">
+          <div>
+            <div class="board-title">Prayer Times</div>
+            <button class="board-city-btn${mapOpen ? ' active' : ''}" id="citySelectBtn" onclick="toggleMap()">
+              <span class="arrow">&#9660;</span> ${city.name.toUpperCase()}
+            </button>
+            <div class="board-date">${fmtDate(city.tz)}</div>
+          </div>
+          <div class="countdown-block">
+            <div class="countdown-label">${nextName.toUpperCase()} IN</div>
+            <div class="countdown-value" id="countdown">${countdownHtml}</div>
+          </div>
+        </div>
+        <div class="map-panel${mapOpen ? ' open' : ''}" id="mapPanel">
+          <div class="map-inner">
+            <div class="map-loading" id="mapLoading">LOADING MAP DATA&#8230;</div>
+            <svg id="worldMap" style="display:none" viewBox="0 0 680 260"></svg>
+          </div>
+        </div>
+        <div class="col-headers">
+          <div class="col-header">Prayer</div>
+          <div class="col-header">Time</div>
+          <div class="col-header" style="text-align:right">Status</div>
+        </div>
+        ${rows}
+        <div class="board-footer">
+          <span class="footer-label">${coordLabel(city)}</span>
+          <div class="footer-dot"></div>
+        </div>
+      `;
+
+      prevCountdown = countdownStr;
+      prevNextIdx = nextIdx;
+
+      if (worldData) renderMap();
+    }
+
+    // ─── Tick update ──────────────────────────────────────────────────────────
+
+    function updateTick() {
+      const nowStr = getDateInCity(selectedCity.tz).toDateString();
+      if (nowStr !== currentDayStr) {
+        loadPrayers();
+        buildBoard();
+        return;
+      }
+
+      const nextPrayer = getNextPrayer(prayers);
+      const nextIdx = nextPrayer ? prayers.indexOf(nextPrayer) : -1;
+      if (nextIdx !== prevNextIdx) { buildBoard(); return; }
+
+      const countdownMs = nextPrayer
+        ? nextPrayer.time.getTime() - Date.now()
+        : tomorrowFajr.time.getTime() - Date.now();
+      const countdownStr = fmtCountdown(countdownMs);
+
+      const el = document.getElementById('countdown');
+      if (el && countdownStr !== prevCountdown) {
+        const newChars = countdownStr.split('');
+        const oldChars = prevCountdown.split('');
+        el.innerHTML = newChars.map((ch, i) =>
+          `<span class="digit${ch !== oldChars[i] ? ' changed' : ''}">${ch}</span>`
+        ).join('');
+        setTimeout(() => {
+          el.querySelectorAll('.changed').forEach(e => e.classList.remove('changed'));
+        }, 200);
+        prevCountdown = countdownStr;
+      }
+    }
+
+    // ─── Map ──────────────────────────────────────────────────────────────────
+
+    let worldData = null;
+    let mapOpen = false;
+
+    function toggleMap() {
+      mapOpen = !mapOpen;
+      const panel = document.getElementById('mapPanel');
+      const btn   = document.getElementById('citySelectBtn');
+      if (!panel) return;
+      panel.classList.toggle('open', mapOpen);
+      if (btn) btn.classList.toggle('active', mapOpen);
+      if (mapOpen && worldData) renderMap();
+    }
+
+    function renderMap() {
+      const svg = document.getElementById('worldMap');
+      if (!svg || !worldData) return;
+
+      svg.style.display = 'block';
+      const loading = document.getElementById('mapLoading');
+      if (loading) loading.style.display = 'none';
+
+      // Clear previous render
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+      const W = 680, H = 260;
+      const ns = 'http://www.w3.org/2000/svg';
+
+      const projection = d3.geoNaturalEarth1()
+        .scale(W / 6.28)
+        .translate([W / 2, H / 2]);
+
+      const path = d3.geoPath().projection(projection);
+
+      const svgD3 = d3.select(svg);
+
+      // Ocean background
+      const sphere = { type: 'Sphere' };
+      svgD3.append('path')
+        .datum(sphere)
+        .attr('fill', '#0d0d0d')
+        .attr('d', path);
+
+      // Graticule
+      const graticule = d3.geoGraticule().step([30, 30]);
+      svgD3.append('path')
+        .datum(graticule())
+        .attr('fill', 'none')
+        .attr('stroke', '#1a1000')
+        .attr('stroke-width', 0.4)
+        .attr('d', path);
+
+      // Countries
+      const countries = topojson.feature(worldData, worldData.objects.countries);
+      svgD3.append('path')
+        .datum(countries)
+        .attr('fill', '#1c1100')
+        .attr('d', path);
+
+      // Borders
+      const borders = topojson.mesh(worldData, worldData.objects.countries, (a, b) => a !== b);
+      svgD3.append('path')
+        .datum(borders)
+        .attr('fill', 'none')
+        .attr('stroke', '#3a2800')
+        .attr('stroke-width', 0.5)
+        .attr('d', path);
+
+      // Sphere outline
+      svgD3.append('path')
+        .datum(sphere)
+        .attr('fill', 'none')
+        .attr('stroke', '#3a2800')
+        .attr('stroke-width', 1)
+        .attr('d', path);
+
+      // City dots
+      CITIES.forEach(city => {
+        const [cx, cy] = projection([city.lon, city.lat]);
+        const isSelected = city.name === selectedCity.name;
+        const g = svgD3.append('g').attr('class', 'city-point');
+
+        // Pulse ring for selected city
+        if (isSelected) {
+          g.append('circle')
+            .attr('cx', cx).attr('cy', cy).attr('r', 8)
+            .attr('fill', 'none')
+            .attr('stroke', '#f5a623')
+            .attr('stroke-width', 1)
+            .attr('opacity', 0.35);
+        }
+
+        g.append('circle')
+          .attr('cx', cx).attr('cy', cy)
+          .attr('r', isSelected ? 5 : 3.5)
+          .attr('fill', isSelected ? '#ffffff' : '#f5a623')
+          .attr('stroke', isSelected ? '#f5a623' : '#7a4010')
+          .attr('stroke-width', 1);
+
+        g.append('text')
+          .attr('x', cx + city.lx)
+          .attr('y', cy + city.ly)
+          .attr('fill', isSelected ? '#ffffff' : '#c87020')
+          .attr('font-size', '7.5px')
+          .attr('font-family', "'Share Tech Mono', monospace")
+          .attr('letter-spacing', '0.08em')
+          .style('cursor', 'pointer')
+          .on('click', () => selectCity(city))
+          .text(city.name.toUpperCase());
+
+        // Invisible hit area
+        g.append('circle')
+          .attr('cx', cx).attr('cy', cy).attr('r', 12)
+          .attr('fill', 'transparent')
+          .style('cursor', 'pointer')
+          .on('click', () => selectCity(city))
+          .on('mouseover', function() {
+            g.select('circle:nth-child(' + (isSelected ? 2 : 1) + ')').attr('r', isSelected ? 7 : 5.5);
+            g.select('text').attr('fill', '#ffffff');
+          })
+          .on('mouseout', function() {
+            g.select('circle:nth-child(' + (isSelected ? 2 : 1) + ')').attr('r', isSelected ? 5 : 3.5);
+            g.select('text').attr('fill', isSelected ? '#ffffff' : '#c87020');
+          });
+      });
+    }
+
+    function selectCity(city) {
+      selectedCity = city;
+      mapOpen = false;
+      loadPrayers();
+      buildBoard();
+    }
+
+    // ─── Init ─────────────────────────────────────────────────────────────────
+
+    loadPrayers();
+    buildBoard();
+    setInterval(updateTick, 1000);
+
+    // Load world atlas in background
+    d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(data => {
+      worldData = data;
+      const svg = document.getElementById('worldMap');
+      if (svg) {
+        const loading = document.getElementById('mapLoading');
+        if (loading) loading.textContent = 'SELECT A CITY';
+      }
+      if (mapOpen) renderMap();
+    }).catch(() => {
+      const loading = document.getElementById('mapLoading');
+      if (loading) loading.textContent = 'MAP UNAVAILABLE';
+    });
+  </script>
+</body>
+</html>
