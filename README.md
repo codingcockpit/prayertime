@@ -1,4 +1,4 @@
-prayertime by ok
+prayertime
 
 simple web-based prayer time with multiple locales. 
 lightweight, retro UI
